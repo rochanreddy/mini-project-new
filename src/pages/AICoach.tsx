@@ -70,7 +70,7 @@ const AICoach = () => {
       setMessages([{
         id: '1',
         role: 'assistant',
-        content: `Hey there! 👋 I'm your AI Fitness Coach, powered by Google Gemini. I'm here to help you with workout suggestions, motivation, and healthy habits.\n\nWhat would you like to know today?`,
+        content: `Hey there! 👋 I'm your AI Fitness Coach. I'm here to help you with workout suggestions, motivation, and healthy habits.\n\nWhat would you like to know today?`,
         timestamp: new Date().toISOString(),
       }]);
     }
@@ -148,11 +148,11 @@ const AICoach = () => {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
-      }
-
       const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.reply || `Server error: ${response.status}`);
+      }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -167,20 +167,25 @@ const AICoach = () => {
 
     } catch (err) {
       console.error('AI Coach error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to connect to coach');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to connect to coach';
+      const isNetworkError = errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('ERR_CONNECTION');
       
-      // Show error toast
+      setError(errorMsg);
+      
       toast({
-        title: 'Connection Error',
-        description: 'Could not reach the AI coach. Please check if the server is running.',
+        title: isNetworkError ? 'Connection Error' : 'AI Coach Error',
+        description: isNetworkError 
+          ? 'Could not reach the AI coach. Please check if the server is running.'
+          : errorMsg,
         variant: 'destructive',
       });
 
-      // Add error message to chat
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "Coach is resting. Try again soon 💪\n\n(Make sure the backend server is running on port 3001)",
+        content: isNetworkError 
+          ? "Coach is resting. Try again soon 💪\n\n(Make sure the backend server is running on port 3001)"
+          : errorMsg,
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -246,7 +251,7 @@ const AICoach = () => {
                     <div className="flex items-center gap-2 mt-1">
                       <Badge variant="secondary" className="text-xs">
                         <Sparkles className="w-3 h-3 mr-1" />
-                        Powered by Gemini
+                        AI Powered
                       </Badge>
                       <span className="text-xs text-muted-foreground">
                         Your personal AI trainer
@@ -269,9 +274,13 @@ const AICoach = () => {
                 >
                   <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-destructive">Connection Error</p>
+                    <p className="text-sm font-medium text-destructive">
+                      {error.includes('Failed to fetch') ? 'Connection Error' : 'AI Coach Error'}
+                    </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Make sure the backend server is running: <code className="bg-muted px-1 py-0.5 rounded">npm run dev</code> in the server folder
+                      {error.includes('Failed to fetch')
+                        ? <>Make sure the backend server is running: <code className="bg-muted px-1 py-0.5 rounded">npm run dev</code> in the server folder</>
+                        : error}
                     </p>
                   </div>
                 </motion.div>

@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Bot, User } from 'lucide-react';
+import { Bot, User, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChatMessageProps {
@@ -9,6 +9,32 @@ interface ChatMessageProps {
   timestamp?: string;
   isSafetyWarning?: boolean;
 }
+
+const urlRegex = /(https?:\/\/[^\s\)]+)/g;
+
+const renderContentWithLinks = (text: string) => {
+  const parts = text.split(urlRegex);
+  
+  return parts.map((part, index) => {
+    if (urlRegex.test(part)) {
+      urlRegex.lastIndex = 0;
+      const isYouTube = part.includes('youtube.com') || part.includes('youtu.be');
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-400 underline underline-offset-2 break-all"
+        >
+          {isYouTube ? '▶ Watch Video' : '🔗 View Guide'}
+          <ExternalLink className="w-3 h-3 flex-shrink-0" />
+        </a>
+      );
+    }
+    return part;
+  });
+};
 
 export const ChatMessage = ({ role, content, timestamp, isSafetyWarning }: ChatMessageProps) => {
   const isUser = role === 'user';
@@ -47,7 +73,9 @@ export const ChatMessage = ({ role, content, timestamp, isSafetyWarning }: ChatM
               : 'bg-muted text-foreground rounded-tl-sm'
           )}
         >
-          <p className="text-sm whitespace-pre-wrap break-words">{content}</p>
+          <p className="text-sm whitespace-pre-wrap break-words">
+            {isUser ? content : renderContentWithLinks(content)}
+          </p>
         </div>
         {timestamp && (
           <span className="text-xs text-muted-foreground mt-1">

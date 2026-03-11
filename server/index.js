@@ -1,40 +1,48 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Initialize Gemini API
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const openai = new OpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: process.env.OPENROUTER_API_KEY,
+});
 
-// System prompt for the AI fitness coach
 const SYSTEM_PROMPT = `You are a professional fitness coach named "FitFlow Coach".
 Give safe, positive, motivating advice.
 Do not give medical diagnosis.
-Keep responses under 80 words.
+Keep responses under 150 words.
 Use friendly tone with emojis.
 Focus on motivation, workout suggestions, and healthy habits.
 If user mentions pain, injury, or illness, advise them to consult a professional trainer or doctor.
-Be supportive and non-judgmental.`;
+Be supportive and non-judgmental.
 
-// Safety keywords that require special handling
+IMPORTANT: When the user asks about a specific exercise or workout, ALWAYS include:
+1. A brief description of how to perform it
+2. A YouTube search link in this format: https://www.youtube.com/results?search_query=how+to+do+EXERCISE+NAME+form
+3. Optionally a link to ExRx.net or similar for the exercise
+
+Example format for exercise links:
+📺 Watch how to do it: https://www.youtube.com/results?search_query=how+to+do+squats+proper+form
+📖 Detailed guide: https://exrx.net/WeightExercises/Quadriceps/BBSquat
+
+Always replace spaces with + in YouTube search URLs. Include these links whenever discussing specific exercises.`;
+
 const SAFETY_KEYWORDS = ['pain', 'injury', 'hurt', 'illness', 'sick', 'injured', 'doctor', 'hospital'];
 
-// Check if message contains safety concerns
 const hasSafetyConcern = (message) => {
   const lowerMessage = message.toLowerCase();
   return SAFETY_KEYWORDS.some(keyword => lowerMessage.includes(keyword));
 };
 
-// AI Coach endpoint
 app.post('/api/ai/coach', async (req, res) => {
   try {
     const { message, history = [] } = req.body;
@@ -46,16 +54,14 @@ app.post('/api/ai/coach', async (req, res) => {
       });
     }
 
-    // Check API key
-    if (!process.env.GEMINI_API_KEY) {
-      console.error('GEMINI_API_KEY not configured');
+    if (!process.env.OPENROUTER_API_KEY) {
+      console.error('OPENROUTER_API_KEY not configured');
       return res.status(500).json({ 
         error: 'API key not configured',
         reply: "Coach is resting. Try again soon 💪"
       });
     }
 
-    // Safety check
     if (hasSafetyConcern(message)) {
       return res.json({
         reply: "I'm concerned about what you mentioned. Please consult a professional trainer or doctor for personalized medical advice. Your health and safety are the priority! 🏥",
@@ -63,38 +69,29 @@ app.post('/api/ai/coach', async (req, res) => {
       });
     }
 
-    // Prepare conversation context (last 3 messages for efficiency)
     const recentHistory = history.slice(-3);
-    let contextPrompt = SYSTEM_PROMPT + '\n\n';
-    
-    if (recentHistory.length > 0) {
-      contextPrompt += 'Recent conversation:\n';
-      recentHistory.forEach(msg => {
-        contextPrompt += `${msg.role === 'user' ? 'User' : 'Coach'}: ${msg.content}\n`;
-      });
-    }
-    
-    contextPrompt += `\nUser: ${message}\nCoach:`;
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...recentHistory.map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content,
+      })),
+      { role: 'user', content: message },
+    ];
 
-    // Call Gemini API (using stable model name)
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-pro',
-      generationConfig: {
-        temperature: 0.9,
-        maxOutputTokens: 200,
-      }
+    const completion = await openai.chat.completions.create({
+      model: 'openrouter/free',
+      messages,
+      temperature: 0.9,
+      max_tokens: 400,
     });
-    
-    const result = await model.generateContent(contextPrompt);
-    const response = await result.response;
-    let reply = response.text();
 
-    // Ensure response isn't too long
-    if (reply.length > 300) {
-      reply = reply.substring(0, 297) + '...';
+    let reply = completion.choices[0]?.message?.content || "I'm here to help! Ask me anything about fitness 💪";
+
+    if (reply.length > 600) {
+      reply = reply.substring(0, 597) + '...';
     }
 
-    // Log for monitoring (without sensitive data)
     console.log(`AI Coach request processed: ${message.substring(0, 50)}...`);
 
     res.json({ 
@@ -105,18 +102,17 @@ app.post('/api/ai/coach', async (req, res) => {
   } catch (error) {
     console.error('AI Coach error:', error.message);
     
-    // Handle specific error cases
-    if (error.message?.includes('API key')) {
+    if (error.message?.includes('API key') || error.code === 'invalid_api_key') {
       return res.status(500).json({ 
         error: 'Configuration error',
-        reply: "Coach is resting. Try again soon 💪"
+        reply: "Invalid API key. Please check your OPENROUTER_API_KEY in server/.env 🔑"
       });
     }
 
-    if (error.message?.includes('quota') || error.message?.includes('rate limit')) {
+    if (error.message?.includes('quota') || error.message?.includes('rate limit') || error.status === 429) {
       return res.status(429).json({ 
         error: 'Rate limit',
-        reply: "I'm a bit overwhelmed right now. Give me a moment and try again! 😅"
+        reply: "Rate limit reached. Please wait a moment and try again ⏳"
       });
     }
 
@@ -127,19 +123,17 @@ app.post('/api/ai/coach', async (req, res) => {
   }
 });
 
-// Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    geminiConfigured: !!process.env.GEMINI_API_KEY
+    apiConfigured: !!process.env.OPENROUTER_API_KEY
   });
 });
 
-// Start server 
 app.listen(PORT, () => {
   console.log(`🏋️ FitFlow AI Coach Server running on port ${PORT}`);
-  console.log(`🤖 Gemini API: ${process.env.GEMINI_API_KEY ? '✅ Configured' : '❌ Not configured'}`);
+  console.log(`🤖 AI API: ${process.env.OPENROUTER_API_KEY ? '✅ Configured (OpenRouter)' : '❌ Not configured'}`);
 });
 
 export default app;

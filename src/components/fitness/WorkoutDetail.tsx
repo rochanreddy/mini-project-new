@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Flame, Target, CheckCircle2, ChevronRight, Award, Zap, Trophy } from 'lucide-react';
+import { Clock, Flame, Target, CheckCircle2, ChevronRight, Award, Zap, Trophy, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -146,7 +146,17 @@ export function WorkoutDetail({ workout, onBack, onToggleExercise }: WorkoutDeta
                       {exercise.name}
                     </h4>
                     <p className="text-sm text-primary font-medium mb-2">{exercise.reps || exercise.duration}</p>
-                    {exercise.instruction && <p className="text-sm text-muted-foreground">{exercise.instruction}</p>}
+                    {exercise.instruction && <p className="text-sm text-muted-foreground mb-3">{exercise.instruction}</p>}
+                    <a
+                      href={`https://www.youtube.com/results?search_query=${exercise.youtubeSearch}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                    >
+                      <Play className="w-3 h-3 fill-current" />
+                      Watch Demo on YouTube
+                    </a>
                   </div>
                 </div>
               </CardContent>
